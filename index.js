@@ -17,29 +17,29 @@ inherits(Plex, Splicer);
 function Plex (sel, cb) {
     var self = this;
     if (!(this instanceof Plex)) return new Plex(sel, cb);
-    
+
     var streams = [ this._pre(), [] ];
     Splicer.call(this, streams, { objectMode: true });
-    
+
     this._root = {};
     this._current = this._root;
-    
+
     this._selectors = [];
     this._lang = lang();
-    
+
     if (sel && cb) this.select(sel, cb);
 }
 
 Plex.prototype._pre = function () {
     var self = this;
     var pipeline;
-    
+
     return through.obj(function (row, enc, next) {
         var tree = self._updateTree(row);
         if (!pipeline) pipeline = self.get(1);
-        
+
         var matched = null;
-        
+
         if (row[0] === 'open') {
             for (var i = 0, l = self._selectors.length; i < l; i++) {
                 var s = self._selectors[i];
@@ -48,7 +48,11 @@ Plex.prototype._pre = function () {
                 }
             }
         }
-        
+
+        if (row[0] === 'open' && tree.selfClosing && tree.parent) {
+            self._current = self._current.parent;
+        }
+
         if ((matched && tree.selfClosing) || row[0] === 'close') {
             var s = pipeline.get(0);
             if (s && s.finished && s.finished(tree)) {
@@ -59,13 +63,9 @@ Plex.prototype._pre = function () {
                 return;
             }
         }
-        
-        if (row[0] === 'open' && tree.selfClosing && tree.parent) {
-            self._current = self._current.parent;
-        }
-        
+
         this.push(row);
-        
+
         next();
     });
 };
@@ -97,17 +97,17 @@ Plex.prototype._createMatch = function (tree, fn) {
         pipeline.shift();
     }
     pipeline.splice(0, 0, m);
-    
+
     m.once('close', function () {
         var ix = pipeline.indexOf(m);
         if (ix >= 0) pipeline.splice(ix, 1);
         pipeline.push(through.obj());
-        
+
         var next = pipeline.get(ix);
         if (next && next._start === tree) {
             next.write([ 'END' ]);
         }
     });
-    
+
     return m;
 };
